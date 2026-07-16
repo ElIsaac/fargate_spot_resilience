@@ -1,0 +1,10 @@
+# Para probar API + probe en local antes de llevarlo a Fargate.
+#   docker compose up --build api
+#   (en otra terminal) python probe/probe.py --url http://localhost:8000
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    # Simula el apagado ordenado: Fargate da 2 min; en local probamos con menos.
+    stop_grace_period: 30s
