@@ -13,6 +13,7 @@ de resiliencia que este test valida.
 from __future__ import annotations
 
 import asyncio
+import math
 import os
 import signal
 import socket
@@ -131,3 +132,34 @@ async def check(item_id: str, delay_ms: int = 0, fail: bool = False):
         **_task_meta,
     }
     return JSONResponse(body, status_code=status_code)
+
+
+# Definido como `def` (síncrono) a propósito: FastAPI lo ejecuta en su
+# threadpool, así el trabajo pesado de CPU no congela por completo el event loop
+# y /health todavía tiene oportunidad de responder. Con varias peticiones
+# concurrentes, contienden por CPU (y el GIL) => la latencia se dispara: esa es
+# la señal de saturación que queremos observar bajo carga con `hey`.
+@app.get("/burn")
+def burn(ms: int = 100):
+    """Quema CPU durante ~`ms` milisegundos para estresar la tarea.
+
+    Úsalo con un generador de carga (p.ej. `hey`) para saturar la CPU y ver
+    cómo se degrada la disponibilidad/latencia que mide el probe.
+    """
+    start = time.perf_counter()
+    deadline = start + ms / 1000
+    iterations = 0
+    x = 0.0
+    while time.perf_counter() < deadline:
+        # Trabajo puramente CPU-bound (sin I/O ni sleep).
+        for _ in range(1000):
+            x += math.sqrt(12345.678) * math.sin(x)
+        iterations += 1
+
+    return {
+        "burned_ms": round((time.perf_counter() - start) * 1000, 3),
+        "requested_ms": ms,
+        "iterations": iterations,
+        "timestamp": time.time(),
+        **_task_meta,
+    }
